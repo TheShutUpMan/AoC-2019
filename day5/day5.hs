@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 import System.IO
 import Data.List.Split (wordsBy)
-import Data.Sequence (Seq(..), ViewL(..), index, update, viewl, (!?))
+import Data.Sequence (Seq(..), ViewL(..), index, update, viewl)
 import qualified Data.Sequence as S
 import Control.Monad.Trans.Writer
 import Control.Monad
@@ -25,7 +25,7 @@ main = sol1
 sol1 :: IO ()
 sol1 = do
     prog <- parseIntcode <$> readFile "inp5.txt"
-    print $ snd $ runWriter $ runIntcode prog
+    print $ showTrace prog
 
 parseIntcode :: String -> Seq Int
 parseIntcode = S.fromList . map read . wordsBy (==',')
@@ -62,19 +62,19 @@ intcodeStep prog pc =
          Add a b pos -> ((update pos (a'+b') prog, pc + 4), [])
              where
                  a' = if head modes == Immediate 
-                         then a else fromMaybe 12345 $ prog !? a
+                         then a else prog `index` a
                  b' = if head (tail modes) == Immediate 
-                         then b else fromMaybe 12345 $ prog !? b
+                         then b else prog `index` b
          Mult a b pos -> ((update pos (a'*b') prog, pc + 4), [])
              where
                  a' = if head modes == Immediate 
-                         then a else fromMaybe 123456 $ prog !? a
+                         then a else prog `index` a
                  b' = if head (tail modes) == Immediate 
-                         then b else fromMaybe 12345 $ prog !? b
+                         then b else prog `index` b
          Inp pos -> ((update pos 1 prog, pc + 2), [])
-         Out pos -> ((prog, pc + 2), [show $ fromMaybe (-1) $ prog !? pos'])
+         Out pos -> ((prog, pc + 2), [show $ prog `index` pos'])
              where pos' = if head modes == Immediate 
-                             then pos else fromMaybe 0 $ prog !? pos
+                             then pos else prog `index` pos
          Halt -> ((S.Empty, 0), [])
 
 runIntcode :: Seq Int -> Writer [String] (Seq Int, Int)
@@ -82,8 +82,8 @@ runIntcode xs = fromMaybe (writer ((S.Empty, 0), [])) $ find
     (\x -> (fst . fst) (runWriter x) == S.Empty) 
     (iterate (>>= uncurry intcodeStep) (writer ((xs, 0), [])))
 
-getTrace :: Seq Int -> [Writer [String] (Seq Int, Int)]
-getTrace xs = takeWhile 
+showTrace :: Seq Int -> [Writer [String] (Seq Int, Int)]
+showTrace xs = takeWhile 
     (\x -> (fst . fst) (runWriter x) /= S.Empty) 
     (iterate (>>= uncurry intcodeStep) (writer ((xs, 0), [])))
 
