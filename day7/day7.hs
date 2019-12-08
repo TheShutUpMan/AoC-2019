@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 import System.IO
 import Data.List.Split (wordsBy)
 import Data.Sequence (Seq(..), ViewL(..), index, update, viewl)
@@ -6,9 +7,11 @@ import qualified Data.Sequence as S
 import Control.Monad.Trans.Writer
 import Control.Monad
 import Control.Applicative ((<$>))
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
 import Data.Tuple.Extra
 import Data.List
+import Lens.Micro.TH
+import Lens.Micro
 
 data Opcode = 
       Add  Int Int Int
@@ -24,11 +27,12 @@ data Opcode =
 data Mode = Position | Immediate deriving (Show, Eq)
 type Instruction = ([Mode], Opcode)
 data ProgState = ProgState
-    { _inputs  :: [Int]
+    { _inps  :: [Int]
     , _program :: Seq Int
     , _pc      :: Int
     } deriving (Show)
     
+makeLenses ''ProgState
 
 main :: IO ()
 main = sol1
@@ -88,7 +92,7 @@ intcodeStep state =
     let 
         prog = _program state
         pc = _pc state
-        inputs = _inputs state
+        inputs = _inps state
         (modes, op) = parseInstruction prog pc
     in writer $ case op of
          Add a b pos -> (ProgState inputs (update pos (a'+b') prog) (pc + 4), [])
@@ -131,22 +135,23 @@ runIntcode xs inputs = fromMaybe (writer (ProgState inputs S.Empty 0, [])) $ fin
     (\x -> (_program . fst) (runWriter x) == S.Empty) 
     (iterate (>>= intcodeStep) (writer (ProgState inputs xs 0, [])))
 
-getOutput :: Writer [Int] a -> Int
-getOutput state = let (_, x:[]) = runWriter state in x
+getOutput :: Writer [Int] a -> Maybe Int
+getOutput = listToMaybe . snd . runWriter
 
-runAllThrusters :: Seq Int -> [Int] -> Int
-runAllThrusters xs inputs = helper xs inputs 0
-    where helper xs [] val = val
-          helper xs (i:inps) val = helper xs inps (getOutput (runIntcode xs [i,val]))
+runAllThrusters :: Seq Int -> [Int] -> Maybe Int
+runAllThrusters xs inputs = helper xs inputs (Just 0)
+    where helper xs [] (Just val) = Just val
+          helper xs [] _   = Nothing
+          helper xs (i:inps) (Just val) = helper xs inps (getOutput (runIntcode xs [i,val]))
 
-runUntilOutput :: ProgState -> [Int] -> Maybe Writer [Int] ProgState
+runUntilOutput :: ProgState -> [Int] -> Maybe (Writer [Int] ProgState)
 runUntilOutput state inputs = find 
-    (\x -> (snd . runWriter) x /= [])
+    (\x -> let (st, w) = runWriter x in
+               w /= [] || st ^. program == S.Empty)
     (iterate (>>= intcodeStep) (writer (state, [])))
 
-thrusterLoop :: Seq Int -> [Int] -> [Int]
-thrusterLoop = undefined 
-
-
-
-
+thrusterLoop :: Seq Int -> [Int] -> [ProgState]
+thrusterLoop program inputs = 
+    let states = zipWith (\x y -> y & inps .~ [x]) inputs 
+                         (repeat $ ProgState [] program 0)
+     in undefined
