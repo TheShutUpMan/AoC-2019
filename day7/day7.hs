@@ -2,12 +2,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 import System.IO
 import Data.List.Split (wordsBy)
-import Data.Sequence (Seq(..), ViewL(..), index, update, viewl)
+import Data.Sequence (Seq(..), ViewL(..), index, update, viewl, (!?))
 import qualified Data.Sequence as S
 import Control.Monad.Trans.Writer
 import Control.Monad
 import Control.Applicative ((<$>))
-import Data.Maybe (fromMaybe, catMaybes, listToMaybe)
+import Control.Monad.Loops
+import Data.Maybe (fromMaybe, catMaybes, listToMaybe, isNothing)
 import Data.Tuple.Extra
 import Data.List
 import Lens.Micro.TH
@@ -35,16 +36,16 @@ data ProgState = ProgState
 makeLenses ''ProgState
 
 main :: IO ()
-main = sol1
+main = sol2
 
 sol1 :: IO ()
 sol1 = do
     prog <- parseIntcode <$> readFile "inp7.txt"
     print $ maximum $ map (runAllThrusters prog) (permutations [0..4])
 
-{- sol2 = do
+sol2 = do
     prog <- parseIntcode <$> readFile "inp7.txt"
-    print $ maximum $ map (thrusterLoop prog) (permutations [5..9]) -}
+    print $ maximum $ map (getVal . (thrusterLoop prog)) (permutations [5..9])
 
 parseIntcode :: String -> Seq Int
 parseIntcode = S.fromList . map read . wordsBy (==',')
@@ -131,8 +132,8 @@ intcodeStep state =
          Halt -> (ProgState inputs S.Empty 0, [])
 
 runIntcode :: Seq Int -> [Int] -> Writer [Int] ProgState
-runIntcode xs inputs = fromMaybe (writer (ProgState inputs S.Empty 0, [])) $ find 
-    (\x -> (_program . fst) (runWriter x) == S.Empty) 
+runIntcode xs inputs = fromMaybe undefined $ find
+    (\x -> (_program . fst) (runWriter x) == S.Empty)
     (iterate (>>= intcodeStep) (writer (ProgState inputs xs 0, [])))
 
 getOutput :: Writer [Int] a -> Maybe Int
@@ -144,14 +145,36 @@ runAllThrusters xs inputs = helper xs inputs (Just 0)
           helper xs [] _   = Nothing
           helper xs (i:inps) (Just val) = helper xs inps (getOutput (runIntcode xs [i,val]))
 
-runUntilOutput :: ProgState -> [Int] -> Maybe (Writer [Int] ProgState)
-runUntilOutput state inputs = find 
+runUntilOutput :: Int -> ProgState -> Writer [Int] ProgState
+runUntilOutput input state = fromMaybe undefined $ find 
     (\x -> let (st, w) = runWriter x in
                w /= [] || st ^. program == S.Empty)
-    (iterate (>>= intcodeStep) (writer (state, [])))
+    (iterate (>>= intcodeStep) (writer (state & inps <>~ [input], [])))
 
-thrusterLoop :: Seq Int -> [Int] -> [ProgState]
-thrusterLoop program inputs = 
-    let states = zipWith (\x y -> y & inps .~ [x]) inputs 
-                         (repeat $ ProgState [] program 0)
-     in undefined
+runNext :: Writer [Int] (Seq ProgState, Int) -> Writer [Int] (Seq ProgState, Int)
+runNext arg = let ((states, ix), w) = runWriter arg
+               in case states !? ix of
+                    Nothing -> runNext $ writer ((states, 0), w)
+                    Just s -> writer ((update ix s' states, ix+1), out++w)
+                        where (s', out) = runWriter $ runUntilOutput (head w) s
+                        
+
+thrusterLoop :: Seq Int -> [Int] -> Writer [Int] (Seq ProgState, Int)
+thrusterLoop program inputs = fromMaybe undefined $ find
+            (\x -> let ((st, ix), _) = runWriter x
+                    in (_program <$> (st !? ix)) == Just S.Empty)
+            (iterate runNext (writer ((states, 0), [0]))) 
+    where 
+        states = S.fromList $ zipWith (\x y -> y & inps .~ [x])
+                            inputs (repeat $ ProgState [] program 0)
+
+getVal :: Writer [Int] b -> Int
+getVal = head . snd . runWriter
+
+testState :: IO ProgState
+testState = do
+    prog <- parseIntcode <$> readFile "inp7.txt"
+    return $ ProgState [] prog 0
+
+fileV :: IO (Seq Int)
+fileV = parseIntcode <$> readFile "inp7.txt"
