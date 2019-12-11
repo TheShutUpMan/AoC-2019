@@ -2,6 +2,7 @@ import System.IO
 import Control.Applicative
 import Data.Array
 import Data.List
+import Data.Fixed
 import Lens.Micro
 
 data Quadrant = UR | DR | DL | UL deriving (Ord, Eq, Show)
@@ -9,21 +10,19 @@ data Quadrant = UR | DR | DL | UL deriving (Ord, Eq, Show)
 main :: IO ()
 main = sol2
 
-test :: IO [String]
-test = lines <$> readFile "test.txt"
-
 sol1 :: IO ()
 sol1 = do
-    input <- lines <$> readFile "test.txt"
+    input <- lines <$> readFile "inp10.txt"
     print $ getMaxAsteroids $ toAsteroidArray input
 
 sol2 :: IO ()
 sol2 = do
-    input <- lines <$> readFile "test.txt"
+    input <- lines <$> readFile "inp10.txt"
     let watchSpot = snd $ getMaxAsteroids $ toAsteroidArray input
-    let indexed = [fst x | x <- indexLst input, snd x == '#']
+    let indexed = [fst x | x <- indexLst input, snd x == '#' && fst x /= watchSpot]
     let sorted = sortBy compareRotation $ map (vectorize watchSpot) indexed
-    print $ map fst $ take 27 $ iterate (\(x, xs) -> vaporizeAsteroid xs x) ((1,0), sorted)
+    print sorted
+    print $ map (deVectorize watchSpot . fst) $ take 199 $ iterate (\(x, xs) -> vaporizeAsteroid xs x) (head sorted, tail sorted)
 
 indexLst :: [[a]] -> [((Int, Int), a)]
 indexLst lst = concat indexedLst
@@ -61,12 +60,15 @@ takeStep from@(fX,fY) to@(tX, tY) =
 
 vaporizeAsteroid :: [(Int, Int)] -> (Int, Int) -> ((Int, Int), [(Int, Int)])
 vaporizeAsteroid [x] _ = (x, [])
-vaporizeAsteroid (x:xs) prev = if compareRotation x prev == EQ
+vaporizeAsteroid (x:xs) prev = if takeStep (0,0) x == takeStep (0,0) prev
                                   then vaporizeAsteroid (xs ++ [x]) prev
                                   else (x, xs)
 
 vectorize :: (Int, Int) -> (Int, Int) -> (Int, Int)
-vectorize (xFrom, yFrom) (xTo, yTo) = (xFrom - xTo, yFrom - yTo)
+vectorize (xFrom, yFrom) (xTo, yTo) = (xTo - xFrom, - (yTo - yFrom))
+
+deVectorize :: (Int, Int) -> (Int, Int) -> (Int, Int) 
+deVectorize (xFrom, yFrom) (xTo, yTo) = (xTo + xFrom, yFrom - yTo)
 
 getQuadrant :: (Int, Int) -> Quadrant
 getQuadrant (x,y)
@@ -75,8 +77,9 @@ getQuadrant (x,y)
   | x < 0 && y < 0 = DL
   | otherwise = UL
 
-cosV :: (Int, Int) -> Double
-cosV (x, y) = fromIntegral y / sqrt (fromIntegral $ x^2 + y^2)
+angle :: (Int, Int) -> Double
+angle (x, y) = let arctan = atan2 (fromIntegral x) (fromIntegral y)
+                in if arctan > 0 then arctan else 2*pi + arctan
 
 compareRotation :: (Int, Int) -> (Int, Int) -> Ordering
 compareRotation a b =
@@ -86,16 +89,8 @@ compareRotation a b =
         quadA = getQuadrant stepA
         quadB = getQuadrant stepB
      in
-        if stepA == stepB then EQ
-        else case quadA `compare` quadB of
-               EQ -> compareInQuadrant quadA stepA stepB
-               c -> c
-    where
-        compareInQuadrant quadA a b =
-            let cosA = cosV a
-                cosB = cosV b
-            in case quadA of
-              UR -> cosA `compare` cosB
-              DR -> (- cosA) `compare` (- cosB)
-              DL -> (- cosA) `compare` (- cosB)
-              UL -> cosA `compare` cosB
+        if stepA == stepB then b `compare` a
+        else angle a `compare` angle b
+
+renderImage :: [(Integer, Integer)] -> [String]
+renderImage xs = [[if (x, y) `elem` xs then '#' else '.' | x <- [0..40]] | y <- reverse [-5..0]] 
