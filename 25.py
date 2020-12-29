@@ -22,11 +22,11 @@ def part1():
                 if door_found:
                     break
         if not door_found:
-             door_num += 1
-             if value == doorpk:
-                 door_found = True
-                 if card_found:
-                     break
+            door_num += 1
+            if value == doorpk:
+                door_found = True
+                if card_found:
+                    break
 
     encryption_key = 1
     for _ in range(door_num):
@@ -40,9 +40,5 @@ def part1():
 
     return (encryption_key, enc2)
 
-def part2():
-    return None
-
 if __name__ == "__main__":
     print(part1())
-    print(part2())

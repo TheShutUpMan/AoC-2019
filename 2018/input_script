@@ -1,0 +1,2 @@
+#!/bin/bash
+curl --cookie cookies.txt https://adventofcode.com/2018/day/$1/input >> "inputs/input${1}.txt"
